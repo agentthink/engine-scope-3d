@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>2.0T DOHC 16V 汽车发动机 3D 精密拆解与四冲程仿真台 (Three.js)</title>
+  <link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+  <!-- 启动加载帷幕 -->
+  <div id="loading-screen">
+    <div class="loader-gear-ring">
+      <div class="gear-outer"></div>
+      <div class="gear-inner"></div>
+    </div>
+    <div class="loader-title">2.0T DOHC 16V TURBO GDI</div>
+    <div class="loader-sub" id="loader-status">正在精密装配 35 项发动机总成与运动学约束…</div>
+  </div>
+
+  <!-- WebGL 3D 视口与 CSS2D 引线标签层 -->
+  <div id="canvas-container"></div>
+  <div id="label-container"></div>
+
+  <!-- 悬停零件轻量浮窗提示 -->
+  <div id="hover-tooltip" class="hidden"></div>
+
+  <!-- 工业数字孪生交互 HUD -->
+  <div id="hud">
+    <!-- 顶部主状态与模式导航栏 -->
+    <header class="top-bar hud-panel-item">
+      <div class="brand-block">
+        <div class="brand-badge">I4·2.0T</div>
+        <div class="brand-titles">
+          <h1>汽车发动机 3D 拆解与四冲程数字孪生台</h1>
+          <p>DOHC 16气门双VVT · 350Bar缸内直喷 · 双流道涡轮增压 · 35项精密总成</p>
+        </div>
+      </div>
+
+      <!-- 视觉渲染模式切换 -->
+      <div class="mode-pills" role="group" aria-label="视觉渲染模式">
+        <button class="pill-btn active" data-render-mode="pbr" title="真实工业金属PBR渲染 (快捷键 1)">🔩 金属原貌</button>
+        <button class="pill-btn" data-render-mode="xray" title="外壳半透明透视内部运动核心 (快捷键 2 / X)">🩻 外壳透视</button>
+        <button class="pill-btn" data-render-mode="cutaway" title="三维实时解剖剖面观察 (快捷键 3 / C)">🔪 动态剖切</button>
+        <button class="pill-btn" data-render-mode="wireframe" title="CAD工程结构线框模式 (快捷键 4)">📐 蓝图线框</button>
+      </div>
+
+      <!-- 辅助开关工具栏 -->
+      <div class="utility-pills">
+        <button id="btn-toggle-bom" class="pill-btn active" title="展开/收起左侧零部件BOM目录树">📋 零件树</button>
+        <button id="btn-toggle-labels" class="pill-btn" title="显示/隐藏 3D 空间引线标注 (快捷键 L)">🏷️ 3D标注</button>
+        <button id="btn-toggle-guides" class="pill-btn active" title="显示/隐藏爆炸拆解轴向引导虚线">📏 引导线</button>
+        <button id="btn-toggle-combustion" class="pill-btn active" title="开启/关闭气缸内四冲程火焰与直喷油雾特效">🔥 燃烧光效</button>
+        <button id="btn-toggle-audio" class="pill-btn" title="开启/静音实时合成四缸涡轮声浪 (快捷键 M)">🔇 引擎声浪</button>
+        <button id="btn-auto-rotate" class="pill-btn" title="开启/停止相机环绕巡航展示">🔄 环绕</button>
+        <button id="btn-hide-hud" class="pill-btn" title="隐藏控制面板，沉浸式全屏赏玩 (快捷键 H)">👁️ 纯净</button>
+      </div>
+    </header>
+
+    <!-- 动态剖切面调节浮条 (仅在激活“动态剖切”时显现) -->
+    <div id="cutaway-bar" class="cutaway-bar hidden hud-panel-item">
+      <span class="cut-title">🔪 实时三维剖切刀控制</span>
+      <div class="cut-axes">
+        <button class="mini-btn active" data-cut-axis="z">纵向剖切 (切第1缸)</button>
+        <button class="mini-btn" data-cut-axis="x">横向剖切 (进排气剖面)</button>
+      </div>
+      <input type="range" id="slider-cut-pos" min="-3.6" max="3.6" step="0.02" value="2.22" />
+      <span id="label-cut-val" class="mono-val">Z = +2.22 (1缸中心)</span>
+    </div>
+
+    <!-- 左侧 BOM 零部件层级目录树与子系统拆解面板 -->
+    <aside id="bom-drawer" class="bom-drawer hud-panel-item">
+      <div class="drawer-header">
+        <div>
+          <h2>零部件总成目录 (35)</h2>
+          <span class="sub-hint">点击零件聚焦检视 · 可按子系统单独拆解</span>
+        </div>
+        <button id="btn-reset-visibility" class="mini-btn" title="恢复显示全部隐藏零件并退出独显">全部复位</button>
+      </div>
+
+      <div class="bom-search-wrap">
+        <input type="text" id="bom-search" placeholder="🔍 搜索零件名称 (如: 曲轴 / 活塞 / 涡轮 / 气门)…" autocomplete="off" />
+      </div>
+
+      <div id="bom-tree-list" class="bom-tree-list"></div>
+    </aside>
+
+    <!-- 右侧 选中零部件机械工程百科卡片 -->
+    <aside id="inspector-card" class="inspector-card hidden hud-panel-item">
+      <div class="inspector-top">
+        <span id="insp-group-badge" class="group-badge">配气机构</span>
+        <button id="btn-close-inspector" class="icon-close" title="关闭详情面板 (Esc)">✕</button>
+      </div>
+      <h2 id="insp-name">全平衡锻钢曲轴</h2>
+      <div id="insp-en" class="insp-en">Forged Steel Counterweighted Crankshaft</div>
+
+      <div class="insp-actions">
+        <button id="btn-solo-part" class="action-chip" title="淡化其余所有零件，360°无遮挡单独审视此件">🔍 隔离独显</button>
+        <button id="btn-pop-part" class="action-chip" title="将该零件单独沿装配轴线拆出">📤 单独拆出</button>
+        <button id="btn-hide-part" class="action-chip" title="暂时隐藏此零件以观察内部">🙈 隐藏此件</button>
+      </div>
+
+      <div class="insp-section">
+        <div class="sec-label">🛠️ 材料与制造工艺</div>
+        <div id="insp-material" class="sec-body highlight-box"></div>
+      </div>
+
+      <div class="insp-section">
+        <div class="sec-label">📖 结构功能与工作原理</div>
+        <p id="insp-summary" class="sec-body"></p>
+      </div>
+
+      <div class="insp-section">
+        <div class="sec-label">📐 工程技术规格</div>
+        <ul id="insp-specs" class="spec-list"></ul>
+      </div>
+    </aside>
+
+    <!-- 中央轻提示 Toast -->
+    <div id="toast-msg" class="toast-msg"></div>
+
+    <!-- 底部核心控制台: 四冲程实时遥测 + 无级爆炸拆解 + 转速控制 + 视角预设 -->
+    <footer class="bottom-dock hud-panel-item">
+      <!-- 左栏: 1-3-4-2 四冲程实时时序遥测矩阵 -->
+      <div class="dock-col telemetry-col">
+        <div class="col-head">
+          <span class="col-title">📊 四冲程点火时序 (1-3-4-2)</span>
+          <span id="val-crank-angle" class="mono-tag">CA: 000°</span>
+        </div>
+        <div class="cyl-grid" id="cyl-telemetry-grid">
+          <div class="cyl-row" data-cyl="1">
+            <span class="cyl-name">1缸</span>
+            <div class="stroke-bar"><div class="stroke-fill"></div></div>
+            <span class="stroke-txt">🔥 做功</span>
+          </div>
+          <div class="cyl-row" data-cyl="2">
+            <span class="cyl-name">2缸</span>
+            <div class="stroke-bar"><div class="stroke-fill"></div></div>
+            <span class="stroke-txt">⚡ 压缩</span>
+          </div>
+          <div class="cyl-row" data-cyl="3">
+            <span class="cyl-name">3缸</span>
+            <div class="stroke-bar"><div class="stroke-fill"></div></div>
+            <span class="stroke-txt">💨 排气</span>
+          </div>
+          <div class="cyl-row" data-cyl="4">
+            <span class="cyl-name">4缸</span>
+            <div class="stroke-bar"><div class="stroke-fill"></div></div>
+            <span class="stroke-txt">❄️ 吸气</span>
+          </div>
+        </div>
+        <div class="live-gauges">
+          <span>增压值: <strong id="val-boost">-0.60 Bar</strong></span>
+          <span>节气门: <strong id="val-throttle">8%</strong></span>
+        </div>
+      </div>
+
+      <!-- 中栏: 爆炸拆解主控与发动机转速工况 -->
+      <div class="dock-col controls-col">
+        <!-- 1. 爆炸拆解控制行 -->
+        <div class="slider-group">
+          <div class="slider-header">
+            <span class="slider-title">💥 全机分级爆炸拆解度</span>
+            <div class="quick-btns">
+              <button id="btn-assemble-all" class="mini-btn">组装复位 (0%)</button>
+              <button id="btn-explode-half" class="mini-btn">半拆透视 (45%)</button>
+              <button id="btn-explode-all" class="mini-btn accent">全尺寸拆解 (100%)</button>
+            </div>
+            <span id="val-explode-pct" class="big-readout accent-cyan">0%</span>
+          </div>
+          <input type="range" id="slider-explode" class="cyber-slider cyan" min="0" max="100" step="0.5" value="0" />
+        </div>
+
+        <!-- 2. 转速与慢动作教学控制行 -->
+        <div class="slider-group">
+          <div class="slider-header">
+            <span class="slider-title">⚡ 发动机运转工况 (RPM)</span>
+            <div class="quick-btns">
+              <button class="mini-btn rpm-preset" data-rpm="0">⏸ 静止</button>
+              <button class="mini-btn rpm-preset active" data-rpm="22" title="极慢速看清气门开闭、活塞往复与四冲程点火顺序!">🔬 慢动作教学</button>
+              <button class="mini-btn rpm-preset" data-rpm="850">怠速 850</button>
+              <button class="mini-btn rpm-preset" data-rpm="2600">巡航 2600</button>
+              <button class="mini-btn rpm-preset danger" data-rpm="6000" title="涡轮满压飞旋 + 排气歧管高温烧红!">🔥 红线 6000</button>
+            </div>
+            <span id="val-rpm" class="big-readout accent-amber">22 RPM</span>
+          </div>
+          <input type="range" id="slider-rpm" class="cyber-slider amber" min="0" max="6000" step="1" value="22" />
+        </div>
+      </div>
+
+      <!-- 右栏: 专业观察机位导览 -->
+      <div class="dock-col camera-col">
+        <div class="col-head">
+          <span class="col-title">🎥 工程观察视角</span>
+          <button id="btn-reset-cam" class="mini-btn">复位镜头</button>
+        </div>
+        <div class="cam-grid">
+          <button class="cam-btn active" data-cam="iso">斜45°全景</button>
+          <button class="cam-btn" data-cam="front_timing">正时轮系</button>
+          <button class="cam-btn" data-cam="rear_flywheel">飞轮离合</button>
+          <button class="cam-btn" data-cam="turbo_side">涡轮增压</button>
+          <button class="cam-btn" data-cam="intake_side">进气直喷</button>
+          <button class="cam-btn" data-cam="valvetrain_top">DOHC凸轮</button>
+          <button class="cam-btn span-2" data-cam="cutaway_cyl1">🔍 1缸燃烧室微距特写</button>
+        </div>
+      </div>
+    </footer>
+
+    <!-- 纯净观赏模式下恢复 UI 按钮 -->
+    <button id="btn-restore-hud" class="pill-btn restore-btn hidden">👁️ 显示控制台 (H)</button>
+  </div>
+
+  <!-- 离线独立 Three.js r187 + PostProcessing + CSS2DRenderer -->
+  <script src="lib/three.bundle.js"></script>
+
+  <!-- 模块化发动机数字孪生引擎 -->
+  <script src="js/constants.js"></script>
+  <script src="js/materials.js"></script>
+  <script src="js/geometry-helpers.js"></script>
+  <script src="js/parts-block.js"></script>
+  <script src="js/parts-cranktrain.js"></script>
+  <script src="js/parts-valvetrain.js"></script>
+  <script src="js/parts-peripherals.js"></script>
+  <script src="js/parts-manifolds-turbo.js"></script>
+  <script src="js/combustion-fx.js"></script>
+  <script src="js/audio-synth.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>

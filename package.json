@@ -1,0 +1,22 @@
+{
+  "name": "threejs-engine",
+  "version": "1.0.0",
+  "description": "2.0T DOHC 16V Inline-4 Turbo GDI Engine 3D Interactive Disassembly & 4-Stroke Digital Twin Simulation built with Three.js",
+  "scripts": {
+    "build:vendor": "node scripts/build-vendor.mjs"
+  },
+  "keywords": [
+    "threejs",
+    "webgl",
+    "engine",
+    "3d-disassembly",
+    "exploded-view",
+    "digital-twin",
+    "four-stroke"
+  ],
+  "license": "MIT",
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "three": "^0.187.0"
+  }
+}
